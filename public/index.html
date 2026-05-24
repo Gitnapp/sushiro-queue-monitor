@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>寿司郎排队</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,system-ui,sans-serif;background:#1a1a2e;color:#eee;min-height:100vh}
+header{background:#16213e;padding:16px 20px;position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center}
+h1{font-size:1.2rem;color:#f6c445}
+#info{font-size:.8rem;color:#888}
+#summary{padding:12px 20px;background:#0f3460;display:flex;gap:20px;flex-wrap:wrap}
+#summary span{font-size:.85rem}
+#summary .num{color:#f6c445;font-weight:bold}
+#controls{padding:10px 20px;display:flex;gap:8px;flex-wrap:wrap}
+#controls button{padding:6px 14px;border:1px solid #333;border-radius:6px;background:#16213e;color:#ccc;cursor:pointer;font-size:.8rem}
+#controls button.active{background:#e94560;border-color:#e94560;color:#fff}
+.city-block{margin:8px 16px;border-radius:8px;overflow:hidden}
+.city-header{padding:10px 16px;background:#16213e;font-size:.9rem;display:flex;justify-content:space-between;cursor:pointer}
+.city-header:hover{background:#1e2d50}
+.city-name{font-weight:bold}
+.city-stats{font-size:.8rem;color:#888}
+.store-list{display:none}
+.store-list.open{display:block}
+.store-row{padding:8px 16px 8px 30px;border-bottom:1px solid #1a1a2e;display:flex;justify-content:space-between;align-items:center;font-size:.85rem}
+.store-row:nth-child(odd){background:#1e1e3a}
+.store-row:nth-child(even){background:#222244}
+.wait-badge{padding:2px 8px;border-radius:10px;font-size:.75rem;font-weight:bold;min-width:50px;text-align:center}
+.wait-high{background:#e94560;color:#fff}
+.wait-mid{background:#f6c445;color:#1a1a2e}
+.wait-low{background:#1a936f;color:#fff}
+.wait-none{background:#333;color:#888}
+.offline{opacity:.6}
+#loading{text-align:center;padding:40px;color:#888}
+#error{text-align:center;padding:20px;color:#e94560;display:none}
+footer{padding:20px;text-align:center;font-size:.7rem;color:#555}
+</style>
+</head>
+<body>
+<header>
+<h1>🍣 寿司郎排队</h1>
+<div id="info">加载中...</div>
+</header>
+<div id="summary"></div>
+<div id="controls"></div>
+<div id="content"><div id="loading">⏳ 获取排队数据...</div></div>
+<div id="error"></div>
+<footer>数据来源: 寿司郎官方小程序 · 每60秒自动刷新</footer>
+
+<script>
+let allData = null;
+let activeCity = null;
+
+async function fetchData() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('error').style.display = 'none';
+  try {
+    const res = await fetch('/api/stores');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    allData = await res.json();
+    render();
+  } catch(e) {
+    document.getElementById('error').textContent = '加载失败: ' + e.message;
+    document.getElementById('error').style.display = 'block';
+  }
+  document.getElementById('loading').style.display = 'none';
+}
+
+function render() {
+  if (!allData || !allData.ok) return;
+
+  // Info bar
+  document.getElementById('info').innerHTML =
+    `更新时间 ${new Date(allData.time).toLocaleTimeString('zh-CN')}`;
+
+  // Summary
+  document.getElementById('summary').innerHTML =
+    `<span>门店: <span class="num">${allData.total}</span></span>
+     <span>营业中: <span class="num">${allData.open}</span></span>
+     <span>总排队: <span class="num">${allData.waiting}</span> 桌</span>`;
+
+  // City buttons
+  const cities = Object.keys(allData.cities).sort();
+  document.getElementById('controls').innerHTML = cities.map(c => {
+    const total = allData.cities[c].reduce((s, st) => s + st.wait, 0);
+    const cls = activeCity === c ? 'active' : '';
+    return `<button class="${cls}" onclick="filterCity('${c}')">${c} (${total})</button>`;
+  }).join('') + `<button class="${!activeCity ? 'active' : ''}" onclick="filterCity(null)">全部</button>`;
+
+  // Store list
+  const citiesToShow = activeCity ? { [activeCity]: allData.cities[activeCity] } : allData.cities;
+  let html = '';
+
+  for (const [city, stores] of Object.entries(citiesToShow).sort()) {
+    const waitingCount = stores.filter(s => s.wait > 0).length;
+    const totalWait = stores.reduce((s, st) => s + st.wait, 0);
+    const openCount = stores.filter(s => s.status === 'OPEN').length;
+
+    html += `<div class="city-block">
+      <div class="city-header" onclick="this.nextElementSibling.classList.toggle('open')">
+        <span class="city-name">📍 ${city}</span>
+        <span class="city-stats">${openCount}/${stores.length}营业 · ${waitingCount}有排队 · ${totalWait}桌</span>
+      </div>
+      <div class="store-list ${!activeCity ? 'open' : 'open'}">`;
+
+    for (const s of stores.sort((a,b) => b.wait - a.wait)) {
+      let badgeClass = 'wait-none';
+      let badgeText = '0';
+      if (s.wait > 200) { badgeClass = 'wait-high'; badgeText = s.wait; }
+      else if (s.wait > 50) { badgeClass = 'wait-mid'; badgeText = s.wait; }
+      else if (s.wait > 0) { badgeClass = 'wait-low'; badgeText = s.wait; }
+
+      const offline = s.status !== 'OPEN' ? 'offline' : '';
+      const statusIcon = s.status === 'OPEN' ? '🟢' : '🔴';
+      const ticketIcon = s.ticket === 'ONLINE' ? '✅' : '❌';
+
+      html += `<div class="store-row ${offline}">
+        <span>${statusIcon} ${s.name} <small style="color:#888">${ticketIcon}</small></span>
+        <span class="wait-badge ${badgeClass}">${badgeText}桌</span>
+      </div>`;
+    }
+
+    html += `</div></div>`;
+  }
+
+  document.getElementById('content').innerHTML = html;
+}
+
+function filterCity(city) {
+  activeCity = city;
+  render();
+}
+
+fetchData();
+setInterval(fetchData, 60000);
+</script>
+</body>
+</html>
