@@ -11,17 +11,18 @@ module.exports = async (req, res) => {
 
   try {
     const hours = parseInt(req.query.hours) || 6;
-    const since = Date.now() - hours * 3600000;
-    const key = `sushiro:store:${id}:history`;
-    const raw = await r.zrangebyscore(key, since, Date.now());
+    const raw = await r.get(`sushiro:store:${id}:history`);
+    let history = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
 
-    const timeline = [];
-    for (const item of raw) {
-      try { timeline.push(typeof item === 'string' ? JSON.parse(item) : item); } catch {}
-    }
+    const since = new Date(Date.now() - hours * 3600000).toISOString();
+    const timeline = history.filter(p => p.time >= since);
 
     res.setHeader('Cache-Control', 'public, max-age=60');
-    res.status(200).json({ ok: true, storeId: id, hours, dataPoints: timeline.length, timeline });
+    res.status(200).json({
+      ok: true, storeId: id, hours,
+      dataPoints: timeline.length,
+      timeline: timeline.reverse(),
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

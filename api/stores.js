@@ -82,12 +82,16 @@ module.exports = async (req, res) => {
     const stores = normalize(raw);
     const resp = build(stores);
 
-    // Cache + snapshot
+    // Cache + snapshot (JSON array, no sorted sets needed)
     if (r) {
       await r.set(CACHE_KEY, JSON.stringify(resp), { ex: CACHE_TTL });
+      // Timeline: prepend to JSON array
       const snap = { time: resp.time, waiting: resp.waiting, open: resp.open };
-      await r.zadd('sushiro:history:timeline', { score: Date.now(), member: JSON.stringify(snap) });
-      await r.zremrangebyscore('sushiro:history:timeline', 0, Date.now() - 7 * 86400000);
+      const raw = await r.get('sushiro:history');
+      const history = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+      history.unshift(snap);
+      if (history.length > 1000) history.length = 1000; // Keep last 1000
+      await r.set('sushiro:history', JSON.stringify(history));
     }
 
     res.setHeader('Cache-Control', 'public, max-age=30');

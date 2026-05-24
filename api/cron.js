@@ -77,28 +77,33 @@ module.exports = async (req, res) => {
       await r.set('sushiro:stores', JSON.stringify(payload), { ex: 60 });
       result.cached = true;
 
-      // Timeline snapshot
+      // Timeline: prepend to JSON array
       const snap = { time: payload.time, waiting: totalWaiting, open: openCount };
-      await r.zadd('sushiro:history:timeline', { score: Date.now(), member: JSON.stringify(snap) });
-      // Keep 7 days
-      await r.zremrangebyscore('sushiro:history:timeline', 0, Date.now() - 7 * 86400000);
+      const raw = await r.get('sushiro:history');
+      const history = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+      history.unshift(snap);
+      if (history.length > 1440) history.length = 1440; // 24h at 1min
+      await r.set('sushiro:history', JSON.stringify(history));
       result.stored = true;
     }
 
-    // Store per-store snapshots for individual store history
-    if (r && stores.length > 0) {
-      const pipeline = [];
-      const now = Date.now();
-      for (const s of stores) {
-        const snap = JSON.stringify({
-          time: new Date().toISOString(),
-          wait: s.wait || 0,
-          status: s.storeStatus,
-          ticket: s.netTicketStatus,
-        });
-        pipeline.push(r.zadd(`sushiro:store:${s.id}:history`, { score: now, member: snap }));
+    // Store per-store snapshots (max 5 stores, to avoid KV rate limits)
+    if (r) {
+      const top = [...stores].sort((a, b) => (b.wait || 0) - (a.wait || 0)).slice(0, 10);
+      for (const s of top) {
+        try {
+          const key = `sushiro:store:${s.id}:history`;
+          const raw = await r.get(key);
+          const arr = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+          arr.unshift({
+            time: new Date().toISOString(),
+            wait: s.wait || 0,
+            status: s.storeStatus,
+          });
+          if (arr.length > 288) arr.length = 288; // ~5h at 1min
+          await r.set(key, JSON.stringify(arr));
+        } catch {}
       }
-      await Promise.allSettled(pipeline);
     }
 
     res.status(200).json(result);

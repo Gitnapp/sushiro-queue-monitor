@@ -6,30 +6,29 @@ module.exports = async (req, res) => {
 
   const r = getRedis();
   if (!r) {
-    return res.status(503).json({ ok: false, error: 'Redis 未配置。在 Vercel Dashboard → Integrations → 添加 Upstash Redis' });
+    return res.status(503).json({ ok: false, error: 'Redis 未配置' });
   }
 
   try {
     const hours = parseInt(req.query.hours) || 6;
-    const since = Date.now() - hours * 3600000;
-    const raw = await r.zrangebyscore('sushiro:history:timeline', since, Date.now());
+    const raw = await r.get('sushiro:history');
+    let history = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
 
-    const timeline = [];
-    for (const item of raw) {
-      try { timeline.push(typeof item === 'string' ? JSON.parse(item) : item); } catch {}
-    }
+    // Filter by time window
+    const since = new Date(Date.now() - hours * 3600000).toISOString();
+    const timeline = history.filter(p => p.time >= since);
 
     // Aggregate by hour
     const hourly = {};
     for (const p of timeline) {
-      const h = p.time.slice(0, 13); // "2026-05-24T15"
+      const h = p.time.slice(0, 13);
       if (!hourly[h] || hourly[h].waiting < p.waiting) hourly[h] = p;
     }
 
     res.setHeader('Cache-Control', 'public, max-age=60');
     res.status(200).json({
       ok: true, hours, dataPoints: timeline.length,
-      timeline,
+      timeline: timeline.reverse(), // chronological
       hourly: Object.values(hourly).sort((a, b) => a.time.localeCompare(b.time)),
     });
   } catch (err) {
