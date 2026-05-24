@@ -1,20 +1,4 @@
-// Vercel Serverless: GET /api/history — 排队历史趋势 (需要 Redis)
-const https = require('https');
-
-let redis = null;
-function getRedis() {
-  if (redis === null) {
-    try {
-      const { Redis } = require('@upstash/redis');
-      if (process.env.UPSTASH_REDIS_REST_URL) {
-        redis = Redis.fromEnv();
-      } else {
-        redis = false;
-      }
-    } catch { redis = false; }
-  }
-  return redis || null;
-}
+const { getRedis } = require('../lib/redis');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');

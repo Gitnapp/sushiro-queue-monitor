@@ -1,26 +1,5 @@
-// Vercel Serverless: GET /api/stores — 所有门店排队 (可选 Redis 缓存 + 历史快照)
 const https = require('https');
-
-// Lazy Redis — works with or without Upstash
-let redis = null;
-function getRedis() {
-  if (redis === null) {
-    try {
-      const { Redis } = require('@upstash/redis');
-      if (process.env.UPSTASH_REDIS_REST_URL) {
-        redis = Redis.fromEnv();
-        console.log('Redis connected');
-      } else {
-        redis = false; // Mark as unavailable
-        console.log('Redis skipped (no env vars)');
-      }
-    } catch {
-      redis = false;
-      console.log('Redis skipped (no package)');
-    }
-  }
-  return redis || null;
-}
+const { getRedis } = require('../lib/redis');
 
 const TOKEN = '4OI44O844Kv44Oz5qSc6Ki855So77yad2VjaGF05YWx6YCa4';
 const HEADERS = {

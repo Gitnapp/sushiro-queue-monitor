@@ -1,16 +1,4 @@
-// Vercel Serverless: GET /api/store-history?id=1012&hours=6 — 单门店排队历史
-let redis = null;
-function getRedis() {
-  if (redis === null) {
-    try {
-      const { Redis } = require('@upstash/redis');
-      if (process.env.UPSTASH_REDIS_REST_URL) {
-        redis = Redis.fromEnv();
-      } else { redis = false; }
-    } catch { redis = false; }
-  }
-  return redis || null;
-}
+const { getRedis } = require('../lib/redis');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');

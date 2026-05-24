@@ -1,20 +1,5 @@
-// Vercel Cron: 每 3 分钟自动快照排队数据到 Redis
 const https = require('https');
-
-let redis = null;
-function getRedis() {
-  if (redis === null) {
-    try {
-      const { Redis } = require('@upstash/redis');
-      if (process.env.UPSTASH_REDIS_REST_URL) {
-        redis = Redis.fromEnv();
-      } else {
-        redis = false;
-      }
-    } catch { redis = false; }
-  }
-  return redis || null;
-}
+const { getRedis } = require('../lib/redis');
 
 const TOKEN = '4OI44O844Kv44Oz5qSc6Ki855So77yad2VjaGF05YWx6YCa4';
 const HEADERS = {
