@@ -89,7 +89,7 @@ module.exports = async (req, res) => {
     // Store to Redis
     if (r) {
       // Cache
-      await r.set('sushiro:stores', JSON.stringify(payload), { ex: 120 });
+      await r.set('sushiro:stores', JSON.stringify(payload), { ex: 60 });
       result.cached = true;
 
       // Timeline snapshot

@@ -31,7 +31,7 @@ const HEADERS = {
   'Referer': 'https://servicewechat.com/wx7ac31ef6c073a7ed/159/page-frame.html',
 };
 const CACHE_KEY = 'sushiro:stores';
-const CACHE_TTL = 30;
+const CACHE_TTL = 60;
 
 function sushiroApi(path) {
   return new Promise((resolve, reject) => {
