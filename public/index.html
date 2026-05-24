@@ -35,12 +35,39 @@ h1{font-size:1.2rem;color:#f6c445}
 #loading{text-align:center;padding:40px;color:#888}
 #error{text-align:center;padding:20px;color:#e94560;display:none}
 footer{padding:20px;text-align:center;font-size:.7rem;color:#555}
+
+/* Skill button */
+#skill-btn{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:.8rem;font-weight:bold;margin-left:12px}
+#skill-btn:hover{opacity:.9}
+#skill-btn svg{width:14px;height:14px;margin-right:4px;vertical-align:-2px}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal{background:#1e1e3a;border-radius:12px;width:90%;max-width:700px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.5);border:1px solid #333}
+.modal-header{padding:16px 20px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center}
+.modal-header h2{font-size:1rem;color:#f6c445}
+.modal-close{background:none;border:none;color:#888;font-size:1.5rem;cursor:pointer;padding:0 4px}
+.modal-close:hover{color:#fff}
+.modal-body{flex:1;overflow-y:auto;padding:16px 20px}
+.modal-body pre{background:#0f0f23;padding:16px;border-radius:8px;overflow-x:auto;font-size:.75rem;line-height:1.5;color:#a8d8a8;white-space:pre-wrap;word-break:break-all;border:1px solid #333}
+.modal-footer{padding:12px 20px;border-top:1px solid #333;display:flex;gap:8px;justify-content:flex-end}
+.modal-footer button{padding:8px 20px;border-radius:6px;border:none;cursor:pointer;font-size:.8rem;font-weight:bold}
+.btn-copy{background:#667eea;color:#fff}
+.btn-copy:hover{background:#764ba2}
+.btn-copy.copied{background:#1a936f}
 </style>
 </head>
 <body>
 <header>
 <h1>🍣 寿司郎排队</h1>
+<div style="display:flex;align-items:center">
 <div id="info">加载中...</div>
+<button id="skill-btn" onclick="openSkill()">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+Agent Skill
+</button>
+</div>
 </header>
 <div id="summary"></div>
 <div id="controls"></div>
@@ -48,9 +75,27 @@ footer{padding:20px;text-align:center;font-size:.7rem;color:#555}
 <div id="error"></div>
 <footer>数据来源: 寿司郎官方小程序 · 每60秒自动刷新</footer>
 
+<!-- Skill Modal -->
+<div class="modal-overlay" id="skill-modal" onclick="if(event.target===this)closeSkill()">
+<div class="modal">
+<div class="modal-header">
+<h2>🤖 Agent 一键部署 Skill</h2>
+<button class="modal-close" onclick="closeSkill()">&times;</button>
+</div>
+<div class="modal-body">
+<p style="color:#888;margin-bottom:12px;font-size:.8rem">复制以下全部内容，粘贴给 Claude Code / Codex / Cursor 即可自动部署。</p>
+<pre id="skill-content">加载中...</pre>
+</div>
+<div class="modal-footer">
+<button class="btn-copy" id="btn-copy" onclick="copySkill()">📋 复制全部</button>
+</div>
+</div>
+</div>
+
 <script>
 let allData = null;
 let activeCity = null;
+let skillText = '';
 
 async function fetchData() {
   document.getElementById('loading').style.display = 'block';
@@ -69,18 +114,12 @@ async function fetchData() {
 
 function render() {
   if (!allData || !allData.ok) return;
-
-  // Info bar
   document.getElementById('info').innerHTML =
     `更新时间 ${new Date(allData.time).toLocaleTimeString('zh-CN')}`;
-
-  // Summary
   document.getElementById('summary').innerHTML =
     `<span>门店: <span class="num">${allData.total}</span></span>
      <span>营业中: <span class="num">${allData.open}</span></span>
      <span>总排队: <span class="num">${allData.waiting}</span> 桌</span>`;
-
-  // City buttons
   const cities = Object.keys(allData.cities).sort();
   document.getElementById('controls').innerHTML = cities.map(c => {
     const total = allData.cities[c].reduce((s, st) => s + st.wait, 0);
@@ -88,48 +127,76 @@ function render() {
     return `<button class="${cls}" onclick="filterCity('${c}')">${c} (${total})</button>`;
   }).join('') + `<button class="${!activeCity ? 'active' : ''}" onclick="filterCity(null)">全部</button>`;
 
-  // Store list
   const citiesToShow = activeCity ? { [activeCity]: allData.cities[activeCity] } : allData.cities;
   let html = '';
-
   for (const [city, stores] of Object.entries(citiesToShow).sort()) {
     const waitingCount = stores.filter(s => s.wait > 0).length;
     const totalWait = stores.reduce((s, st) => s + st.wait, 0);
     const openCount = stores.filter(s => s.status === 'OPEN').length;
-
     html += `<div class="city-block">
       <div class="city-header" onclick="this.nextElementSibling.classList.toggle('open')">
         <span class="city-name">📍 ${city}</span>
         <span class="city-stats">${openCount}/${stores.length}营业 · ${waitingCount}有排队 · ${totalWait}桌</span>
       </div>
       <div class="store-list ${!activeCity ? 'open' : 'open'}">`;
-
     for (const s of stores.sort((a,b) => b.wait - a.wait)) {
       let badgeClass = 'wait-none';
       let badgeText = '0';
       if (s.wait > 200) { badgeClass = 'wait-high'; badgeText = s.wait; }
       else if (s.wait > 50) { badgeClass = 'wait-mid'; badgeText = s.wait; }
       else if (s.wait > 0) { badgeClass = 'wait-low'; badgeText = s.wait; }
-
       const offline = s.status !== 'OPEN' ? 'offline' : '';
       const statusIcon = s.status === 'OPEN' ? '🟢' : '🔴';
       const ticketIcon = s.ticket === 'ONLINE' ? '✅' : '❌';
-
       html += `<div class="store-row ${offline}">
         <span>${statusIcon} ${s.name} <small style="color:#888">${ticketIcon}</small></span>
         <span class="wait-badge ${badgeClass}">${badgeText}桌</span>
       </div>`;
     }
-
     html += `</div></div>`;
   }
-
   document.getElementById('content').innerHTML = html;
 }
 
-function filterCity(city) {
-  activeCity = city;
-  render();
+function filterCity(city) { activeCity = city; render(); }
+
+// Skill modal
+async function openSkill() {
+  document.getElementById('skill-modal').classList.add('show');
+  if (!skillText) {
+    try {
+      const res = await fetch('/api/skill');
+      skillText = await res.text();
+      document.getElementById('skill-content').textContent = skillText;
+    } catch(e) {
+      document.getElementById('skill-content').textContent = '加载失败: ' + e.message;
+    }
+  }
+}
+
+function closeSkill() {
+  document.getElementById('skill-modal').classList.remove('show');
+}
+
+async function copySkill() {
+  try {
+    await navigator.clipboard.writeText(skillText);
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = '✅ 已复制!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 复制全部';
+      btn.classList.remove('copied');
+    }, 2000);
+  } catch(e) {
+    // Fallback
+    const el = document.getElementById('skill-content');
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
 }
 
 fetchData();
