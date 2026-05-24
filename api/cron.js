@@ -77,8 +77,14 @@ module.exports = async (req, res) => {
       await r.set('sushiro:stores', JSON.stringify(payload), { ex: 60 });
       result.cached = true;
 
-      // Timeline: prepend to JSON array
-      const snap = { time: payload.time, waiting: totalWaiting, open: openCount };
+      // Timeline: prepend to JSON array (per-city totals enable city-filtered trend)
+      const citySnap = {};
+      for (const [city, list] of Object.entries(cities)) {
+        let w = 0, o = 0;
+        for (const st of list) { w += st.wait || 0; if (st.status === 'OPEN') o++; }
+        citySnap[city] = { waiting: w, open: o, total: list.length };
+      }
+      const snap = { time: payload.time, waiting: totalWaiting, open: openCount, cities: citySnap };
       const raw = await r.get('sushiro:history');
       const history = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
       history.unshift(snap);

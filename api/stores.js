@@ -85,8 +85,14 @@ module.exports = async (req, res) => {
     // Cache + snapshot (JSON array, no sorted sets needed)
     if (r) {
       await r.set(CACHE_KEY, JSON.stringify(resp), { ex: CACHE_TTL });
-      // Timeline: prepend to JSON array
-      const snap = { time: resp.time, waiting: resp.waiting, open: resp.open };
+      // Timeline: prepend to JSON array (per-city totals enable city-filtered trend)
+      const citySnap = {};
+      for (const [city, list] of Object.entries(resp.cities)) {
+        let w = 0, o = 0;
+        for (const st of list) { w += st.wait || 0; if (st.status === 'OPEN') o++; }
+        citySnap[city] = { waiting: w, open: o, total: list.length };
+      }
+      const snap = { time: resp.time, waiting: resp.waiting, open: resp.open, cities: citySnap };
       const raw = await r.get('sushiro:history');
       const history = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
       history.unshift(snap);
